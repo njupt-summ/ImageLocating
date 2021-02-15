@@ -1,2 +1,7 @@
 # ImageLocate
-You can access our dataset E-DailyMail by https://github.com/jingqiangchen/multi-modal
+The dataset E-DailyMail can be constructed by https://github.com/jingqiangchen/multi-modal
+
+# Requirements
+Tensorflow;
+Tqdm;
+Caffe.
