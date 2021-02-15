@@ -3,5 +3,7 @@ The dataset E-DailyMail can be constructed by https://github.com/jingqiangchen/m
 
 # Requirements
 Tensorflow;
+OpenCV;
+gensim;
 Tqdm;
 Caffe.
