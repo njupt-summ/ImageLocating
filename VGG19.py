@@ -2,24 +2,24 @@ import numpy as np
 import sys
 import cv2
 import os
-# import imageio
-sys.path.append("/home/cjq/caffe/python")
+# sys.path.append("/home/cjq/caffe/python")
 import caffe
 
 
  
 caffe.set_mode_gpu()
+
+# load VGGNet framework and weights that have been pre-trained
+model_def = '***/VGG_ILSVRC_19_layers.prototxt'
+model_weights = '***/VGG_ILSVRC_19_layers.caffemodel'
  
-model_def = '../models/VGG_ILSVRC_19_layers/VGG_ILSVRC_19_layers.prototxt'
-model_weights = '../models/VGG_ILSVRC_19_layers/VGG_ILSVRC_19_layers.caffemodel'
- 
-net = caffe.Net(model_def,      # define model_withoutcap structure
-                model_weights,  # includes model_withoutcap's training weights
+net = caffe.Net(model_def,      # define model_withcap structure
+                model_weights,  # includes model_withcap's training weights
                 caffe.TEST)     # use test mode (without dropout)
 
  
 # load Imagenet image mean (released with Cafe)
-mu = np.load('../imagenet/ilsvrc_2012_mean.npy')
+mu = np.load('***/ilsvrc_2012_mean.npy')
 mu = mu.mean(1).mean(1)  # average all the pixel values to get the average pixel value of BGR
 
  

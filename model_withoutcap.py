@@ -15,12 +15,10 @@ class ImaLoc:
         self.learning_rate = learning_rate
         
         self.text = tf.placeholder(shape=(None, None, self.sen_maxlen, self.emb_size), dtype=tf.float32, name='text')
-        self.caps = tf.placeholder(shape=(None, None, self.sen_maxlen, self.emb_size), dtype=tf.float32, name='caption')
         self.imgs = tf.placeholder(shape=(None, None, 4096), dtype=tf.float32, name='img')
         self.labels = tf.placeholder(shape=(None, None), dtype=tf.int64, name='locations')
         self.sequence_len_sent = tf.placeholder(shape=(None, None), dtype=tf.int64, name='sequence_len_sent')
-        self.sequence_len_cap = tf.placeholder(shape=(None, None), dtype=tf.int64, name='sequence_len_cap')
-        
+         
         self.sequence_len_text = tf.placeholder(shape=(None), dtype=tf.int64, name='sequence_len_text')
         self.sequence_len_capdoc = tf.placeholder(shape=(None), dtype=tf.int64, name='sequence_len_capdoc')
         
@@ -41,10 +39,7 @@ class ImaLoc:
             cell_bw = rnn.GRUCell(self.wd_hidden_dim)
             
             text_rnn_input = tf.reshape(self.text, [-1,self.sen_maxlen, self.emb_size])
-            caps_rnn_input = tf.reshape(self.caps, [-1,self.sen_maxlen, self.emb_size])
-            
             text_seq_len = tf.reshape(self.sequence_len_sent, [-1])
-            cap_seq_len = tf.reshape(self.sequence_len_cap, [-1])
             
             # encode news text
             init_state_fw_t = tf.tile(tf.get_variable('word_init_state_fw', 
@@ -65,36 +60,16 @@ class ImaLoc:
                 initial_state_bw=init_state_bw_t,
                 scope=scope
                 )
-            
-            # encode caption
-            init_state_fw_c = tf.tile(tf.get_variable('cap_init_state_fw', 
-                                                    shape=[1, self.wd_hidden_dim], 
-                                                    initializer=tf.contrib.layers.xavier_initializer(uniform=False)),
-                                      multiples=[tf.shape(caps_rnn_input)[0], 1])
-            init_state_bw_c = tf.tile(tf.get_variable('cap_init_state_bw',
-                                                    shape=[1, self.wd_hidden_dim],
-                                                    initializer=tf.contrib.layers.xavier_initializer(uniform=False)),
-                                      multiples=[tf.shape(caps_rnn_input)[0], 1])  
-            _, state_caps = bidirectional_rnn(
-                cell_fw=cell_fw,
-                cell_bw=cell_bw, 
-                inputs=caps_rnn_input,
-                input_lengths= cap_seq_len,
-                initial_state_fw=init_state_fw_c,
-                initial_state_bw=init_state_bw_c,
-                scope=scope
-                )
-             
+        
             self.word_text_rnn_outputs = tf.reshape(state_text,[-1, self.text_size, 2*self.wd_hidden_dim])
-            self.word_caps_rnn_outputs = tf.reshape(state_caps,[-1, self.caps_size, 2*self.wd_hidden_dim])
-
+          
     def imgs_encoder(self):
         with tf.variable_scope('imgs') as scope:
-            W_img = tf.get_variable('W_img', [4096+self.wd_hidden_dim*2 , self.wd_hidden_dim*2], tf.float32, 
+            W_img = tf.get_variable('W_img', [4096, self.wd_hidden_dim*2], tf.float32, 
                                     initializer = tf.contrib.layers.xavier_initializer(uniform=False)) 
             b_img = tf.get_variable('b_img', [self.wd_hidden_dim*2], tf.float32, 
                                     initializer = tf.contrib.layers.xavier_initializer(uniform=False)) 
-            self.imgs_vec = tf.tanh(tf.matmul(tf.concat([self.imgs,self.word_caps_rnn_outputs], axis = 1),W_img)+b_img)
+            self.imgs_vec = tf.tanh(tf.matmul(self.imgs, W_img)+b_img)
 
 
     def sent_encoder(self):
@@ -189,7 +164,7 @@ class ImaLoc:
 
                 simi_mask = Mask(simi, self.sequence_len_text,tf.reduce_min(simi))
                 # update the sentence representation
-                context = update_acp(context, img_seq[time] ,simi, W_mid, b_mid) 
+                context = update_acp(context, img_seq[time], simi, W_mid, b_mid) 
                 # concatenate the similarities of each recurrence    
                 out_l = out_l.write(time, simi_mask)
                 return time+1, n, context, out_l
@@ -201,7 +176,7 @@ class ImaLoc:
     def train(self):     
         # using one hot encode the label; 
         # using cross entropy calculate loss;
-        # using Adam 0ptimizate model.
+        # using Adam 0ptimizate model_withcap.
         labels = tf.one_hot(self.labels, depth=tf.cast(tf.shape(self.text)[1], dtype = tf.int32), axis = -1)
         loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=self.logits))
         train_op = tf.train.AdamOptimizer(self.learning_rate, name='Adam').minimize(loss)    
@@ -218,16 +193,15 @@ class ImaLoc:
         incorect_rate_soft = tf.divide(tf.reduce_sum(tf.abs(bias), axis = -1),self.sequence_len_capdoc)
         return incorect_rate_hard, incorect_rate_soft, bias, mask_pri
             
-    def get_feed_dict(self, text_dir, captions_dir, img_dir, filenames):
-        text, caps, imgs, la, sequence_len_sent, sequence_len_cap, sequence_len_text, sequence_len_capdoc = batch_normalize(text_dir, captions_dir, img_dir, filenames)
+    def get_feed_dict(self, text_dir, captions_dir, img_dir, filenames, sen_maxlen, emb_size):
+        text, _, imgs, la, sequence_len_sent, _, sequence_len_text, sequence_len_capdoc = batch_normalize(text_dir, captions_dir, img_dir,
+                                                                                                          filenames, sen_maxlen, emb_size)
       
         fd = {
             self.text: text,
-            self.caps: caps,
             self.imgs: imgs,
             self.labels: la,
             self.sequence_len_sent: sequence_len_sent,
-            self.sequence_len_cap: sequence_len_cap, 
             self.sequence_len_text: sequence_len_text, 
             self.sequence_len_capdoc: sequence_len_capdoc
             }

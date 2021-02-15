@@ -6,13 +6,8 @@ from numpy import argmax
 from VGG19 import get_imgs_fea
 import os
 
-vec_model = KeyedVectors.load("../models/word2vec/word_dm.model_withoutcap")   # loading pre-trained word2vec model_withoutcap
+vec_model = KeyedVectors.load("***/word2vec/word_vec")   # loading pre-trained word2vec model
 stop_words = nltk.corpus.stopwords.words('english')
-vec_len = 100       # the dimension of word embedding
-sen_maxlen = 30     # the number of words in sentence
-pad = [1e-10 for _ in range(vec_len)]       # padding vector for sentence
-pad_txt = [[0 for _ in range(vec_len)] for _ in range(sen_maxlen)]      
-pad_img = [1e-10 for _ in range(4096)]      # the dimension of image vector is 4096
 
 # read text and splitting it
 def text_read(file_path):
@@ -27,7 +22,7 @@ def text_read(file_path):
     return parag
  
 # every sentence vectors are summation of word embedding
-def text_vec_add(text):
+def text_vec_add(text, vec_len):
     text_list = list()
     for sent in text:
         v = np.zeros(vec_len)
@@ -40,10 +35,10 @@ def text_vec_add(text):
                 pass     
         text_list.append(v)
     return text_list
-    # [sentence_number, word_embedding_size]
+    # text_list(sentence_number, word_embedding_size)
  
 # pad for sentence
-def text_vec_pad(text):
+def text_vec_pad(text, sen_maxlen, pad):
     text_list = list()
     sent_len = list()
     for sent in text:
@@ -66,11 +61,11 @@ def text_vec_pad(text):
         sent_len.append(length) 
              
     return text_list, sent_len
-    # [sentence_number, sen_maxlen, word_embedding_size]
+    # text_list(sentence_number, sen_maxlen, word_embedding_size)
  
  
 # cosine distance
-def vector_similarity(s1, s2):
+def vector_similarity(s1, s2, pad):
     if (s1 == 0).all():
         s1 = pad
     if (s2 == 0).all():
@@ -78,16 +73,16 @@ def vector_similarity(s1, s2):
     return np.dot(s1, s2) / (norm(s1) * norm(s2))
  
 # find the location of the picture according to the caption
-def caps_correspond_locat(caps,text):
-    caps_vec = text_vec_add(caps)
-    text_vec = text_vec_add(text)
+def caps_correspond_locat(caps, text, pad, vec_len):
+    caps_vec = text_vec_add(caps, vec_len)
+    text_vec = text_vec_add(text, vec_len)
     locats = list()
         
     for i in range(len(caps_vec)):
         l = list()
         for s in text_vec:
 #             the cosine distance between image i and each sentence
-            l.append(vector_similarity(s, caps_vec[i]))
+            l.append(vector_similarity(s, caps_vec[i]), pad)
 #         choose the biggest value as the ground truth
         locats.append(argmax(l))
     return locats
@@ -100,7 +95,7 @@ def deal_text_label(caps_locat_list):
     return  post_cut_locat_list
 
 # load data for every news
-def get_data(text_dir, caps_dir, imgs_dir, file_name):
+def get_data(text_dir, caps_dir, imgs_dir, file_name, sen_maxlen, vec_len):
 #     read news text, caption and image vector processed by VGGNet
     caps_path = os.path.join(caps_dir,file_name)
     text_path = os.path.join(text_dir,file_name)
@@ -108,8 +103,10 @@ def get_data(text_dir, caps_dir, imgs_dir, file_name):
     text = text_read(text_path)
     caps = text_read(caps_path)
     imgs = get_imgs_fea(imgs_path)
+    
+    pad = [1e-10 for _ in range(vec_len)]
 #     get image's location according to caption
-    caps_locat_list = caps_correspond_locat(caps,text)
+    caps_locat_list = caps_correspond_locat(caps, text, pad, vec_len)
      
     # delete captions from news text
     rm_repet = sorted(list(set(caps_locat_list)))
@@ -117,13 +114,12 @@ def get_data(text_dir, caps_dir, imgs_dir, file_name):
     for i in rm_repet:
         del text[i]
     caps_locat_list = deal_text_label(caps_locat_list)
-    txt_pad, txt_len = text_vec_pad(text)
-    cap_pad, cap_len = text_vec_pad(caps)
+    txt_pad, txt_len = text_vec_pad(text, sen_maxlen, pad)
+    cap_pad, cap_len = text_vec_pad(caps, sen_maxlen, pad)
     return txt_pad, txt_len, cap_pad, cap_len, imgs, caps_locat_list
 
-
-# load data for batch news and normalize them
-def batch_normalize(text_dir, captions_dir, img_dir, filenames):
+# load data for batch news 
+def batch_read(text_dir, captions_dir, img_dir, filenames, sen_maxlen, vec_len):
     text_batch = list()
     labels_batch = list()
     sent_len_batch = list()     # the set of lengths of every sentence in news text
@@ -132,14 +128,21 @@ def batch_normalize(text_dir, captions_dir, img_dir, filenames):
     caps_batch = list()
     
     for f in filenames:
-        text, caps, sent_len, cap_len, img, positions = get_data(text_dir, captions_dir, img_dir, f)
+        text, caps, sent_len, cap_len, img, positions = get_data(text_dir, captions_dir, img_dir, f,
+                                                                 sen_maxlen, vec_len)
         labels_batch.append(positions)
         imgs_batch.append(img)
         text_batch.append(text)
         sent_len_batch.append(sent_len)
         cap_len_batch.append(cap_len)
         caps_batch.append(caps)
+    return text_batch, labels_batch, sent_len_batch, imgs_batch, cap_len_batch, caps_batch
+
+# normalize a batch of news
+def batch_normalize(text_dir, captions_dir, img_dir, filenames, sen_maxlen, vec_len):
     
+    text_batch, labels_batch, sent_len_batch, imgs_batch, cap_len_batch, caps_batch = batch_read(text_dir, captions_dir, img_dir, filenames,
+                                                                                                 sen_maxlen, vec_len)
 #     normalize the training data
     text_batch_norm = list()
     caps_batch_norm = list()
@@ -153,6 +156,9 @@ def batch_normalize(text_dir, captions_dir, img_dir, filenames):
 #     pad data of every item to the maximum
     text_size = max(text_len)
     caps_size = max(caps_num)
+    
+    pad_txt = [[0 for _ in range(vec_len)] for _ in range(sen_maxlen)]      
+    pad_img = [1e-10 for _ in range(4096)]      # the dimension of image vector is 4096
     
     batch_size = len(text_batch)
     for i in range(batch_size):
@@ -176,6 +182,5 @@ def batch_normalize(text_dir, captions_dir, img_dir, filenames):
             cap_len_batch_norm.append(cap_len_batch[i])
             imgs_batch_norm.append(imgs_batch[i])
          
-    del text_batch, caps_batch, imgs_batch, labels_batch, sent_len_batch, cap_len_batch
     return text_batch_norm, caps_batch_norm, imgs_batch_norm, labels_batch_norm, sent_len_batch_norm, cap_len_batch_norm, text_len, caps_num
 
