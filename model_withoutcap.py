@@ -140,7 +140,7 @@ class ImaLoc:
             
             # training weight for updating mechanism
             W_mid = tf.get_variable('W_mid', [self.st_hidden_dim*4,self.st_hidden_dim*2], tf.float32, 
-                                    initializer = tf.contrib.layers.xavier_initializer(uniform=False))      #方式4
+                                    initializer = tf.contrib.layers.xavier_initializer(uniform=False))
             
             b_mid = tf.get_variable('b_mid', [self.st_hidden_dim*2], tf.float32,
                                      initializer = tf.contrib.layers.xavier_initializer(uniform=False))
